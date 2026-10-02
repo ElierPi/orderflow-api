@@ -1,8 +1,14 @@
 import os
+from typing import Generator
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Session,
+    sessionmaker,
+)
 
 load_dotenv()
 
@@ -19,3 +25,22 @@ engine = create_engine(
     database_url,
     pool_pre_ping=True,
 )
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+SessionLocal = sessionmaker(
+    bind=engine,
+    autoflush=False,
+)
+
+
+def get_db() -> Generator[Session, None, None]:
+    db = SessionLocal()
+
+    try:
+        yield db
+    finally:
+        db.close()
