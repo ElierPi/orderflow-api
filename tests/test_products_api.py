@@ -111,3 +111,33 @@ def test_get_nonexistent_product_returns_404(client):
     assert response.json() == {
         "detail": "Product not found"
     }
+
+def test_update_product(client):
+    create_response = client.post(
+        "/products/",
+        json={
+            "name": "Keyboard Basic",
+            "price": "150000.00",
+            "stock": 5,
+        },
+    )
+
+    product_id = create_response.json()["id"]
+
+    response = client.put(
+        f"/products/{product_id}",
+        json={
+            "name": "Keyboard Pro",
+            "price": "250000.00",
+            "stock": 12,
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["id"] == product_id
+    assert data["name"] == "Keyboard Pro"
+    assert data["price"] == "250000.00"
+    assert data["stock"] == 12
