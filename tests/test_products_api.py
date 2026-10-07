@@ -141,3 +141,54 @@ def test_update_product(client):
     assert data["name"] == "Keyboard Pro"
     assert data["price"] == "250000.00"
     assert data["stock"] == 12
+
+def test_update_nonexistent_product_returns_404(client):
+    response = client.put(
+        "/products/999999",
+        json={
+            "name": "Ghost Product",
+            "price": "100000.00",
+            "stock": 1,
+        },
+    )
+
+    assert response.status_code == 404
+
+    assert response.json() == {
+        "detail": "Product not found"
+    }
+
+def test_delete_product(client):
+    create_response = client.post(
+        "/products/",
+        json={
+            "name": "Mouse Temporal",
+            "price": "90000.00",
+            "stock": 4,
+        },
+    )
+
+    product_id = create_response.json()["id"]
+
+    response = client.delete(
+        f"/products/{product_id}"
+    )
+
+    assert response.status_code == 204
+
+    get_response = client.get(
+        f"/products/{product_id}"
+    )
+
+    assert get_response.status_code == 404
+
+def test_delete_nonexistent_product_returns_404(client):
+    response = client.delete(
+        "/products/999999"
+    )
+
+    assert response.status_code == 404
+
+    assert response.json() == {
+        "detail": "Product not found"
+    }
