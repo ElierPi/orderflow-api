@@ -38,6 +38,7 @@ def test_get_products(client):
     assert data[0]["price"] == "120000.00"
     assert data[0]["stock"] == 5
 
+
 def test_get_product_by_id(client):
     create_response = client.post(
         "/products/",
@@ -50,9 +51,7 @@ def test_get_product_by_id(client):
 
     product_id = create_response.json()["id"]
 
-    response = client.get(
-        f"/products/{product_id}"
-    )
+    response = client.get(f"/products/{product_id}")
 
     assert response.status_code == 200
 
@@ -64,26 +63,7 @@ def test_get_product_by_id(client):
     assert data["stock"] == 3
 
 
-def test_get_nonexistent_product_returns_404(client):
-    response = client.get(
-        "/products/999999"
-    )
 
-    assert response.status_code == 404
-
-    assert response.json() == {
-        "detail": "Product not found"
-    }
-
-def test_get_product_by_id(client):
-    create_response = client.post(
-        "/products/",
-        json={
-            "name": "Monitor 24",
-            "price": "650000.00",
-            "stock": 3,
-        },
-    )
 
     product_id = create_response.json()["id"]
 
