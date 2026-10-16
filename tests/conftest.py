@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
@@ -9,7 +10,20 @@ from sqlalchemy.orm import sessionmaker
 
 # IMPORTANTE:
 # cargamos las variables de testing ANTES de importar nuestra aplicación
-load_dotenv(".env.test", override=True)
+test_env_path = Path(".env.test")
+if not test_env_path.is_file():
+    raise RuntimeError(
+        "No se pueden ejecutar las pruebas: falta el archivo .env.test. "
+        "Se cancela para evitar operaciones destructivas en otra base de datos."
+    )
+
+load_dotenv(test_env_path, override=True)
+
+if os.getenv("DB_NAME") != "orderflow_test_db":
+    raise RuntimeError(
+        "No se pueden ejecutar las pruebas: DB_NAME debe ser exactamente "
+        "'orderflow_test_db'. Se cancela para proteger la base de desarrollo."
+    )
 
 from app.database import Base, get_db
 from app.main import app
