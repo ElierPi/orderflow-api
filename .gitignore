@@ -6,6 +6,16 @@ __pycache__/
 .env
 .env.*
 !.env.example
+!.env.test.example
+!.env.docker.example
+
+node_modules/
+dist/
+.tools/
+playwright-report/
+test-results/
+*.log
+*.tsbuildinfo
 
 .vscode/
 .idea/
