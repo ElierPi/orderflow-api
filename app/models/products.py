@@ -9,6 +9,8 @@ from app.database import Base
 class Product(Base):
     __tablename__ = "products"
 
+    active: Mapped[bool] = mapped_column(default=True)
+
     id: Mapped[int] = mapped_column(
         primary_key=True
     )
@@ -37,4 +39,3 @@ class Product(Base):
         CheckConstraint("stock >= 0"),
     )
 
-    

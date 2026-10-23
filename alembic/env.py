@@ -4,6 +4,7 @@ from alembic import context
 
 from app.database import Base, database_url, engine
 from app.models.products import Product
+from app.models.commerce import Customer, InventoryMovement, Order, OrderItem, User
 
 
 config = context.config
@@ -33,6 +34,14 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    supplied_connection = config.attributes.get("connection")
+    if supplied_connection is not None:
+        context.configure(connection=supplied_connection, target_metadata=target_metadata,
+                          compare_type=True)
+        with context.begin_transaction():
+            context.run_migrations()
+        return
+
     with engine.connect() as connection:
         context.configure(
             connection=connection,
