@@ -1,8 +1,12 @@
+import pytest
+
+
 def test_create_product(client):
     response = client.post(
         "/products/",
         json={
             "name": "Mechanical Keyboard",
+            "description": "Hot-swappable switches",
             "price": "250000.00",
             "stock": 10,
         },
@@ -13,6 +17,8 @@ def test_create_product(client):
     data = response.json()
 
     assert data["name"] == "Mechanical Keyboard"
+    assert data["description"] == "Hot-swappable switches"
+    assert client.get(f"/products/{data['id']}").json()["description"] == data["description"]
     assert data["price"] == "250000.00"
     assert data["stock"] == 10
     assert "id" in data
@@ -108,6 +114,7 @@ def test_update_product(client):
         f"/products/{product_id}",
         json={
             "name": "Keyboard Pro",
+            "description": "Wireless keyboard",
             "price": "250000.00",
             "stock": 12,
         },
@@ -119,6 +126,8 @@ def test_update_product(client):
 
     assert data["id"] == product_id
     assert data["name"] == "Keyboard Pro"
+    assert data["description"] == "Wireless keyboard"
+    assert client.get(f"/products/{product_id}").json()["description"] == "Wireless keyboard"
     assert data["price"] == "250000.00"
     assert data["stock"] == 12
 
@@ -172,3 +181,19 @@ def test_delete_nonexistent_product_returns_404(client):
     assert response.json() == {
         "detail": "Product not found"
     }
+
+
+@pytest.mark.parametrize("replacement", [None, "Updated description"])
+def test_replace_product_description(client, replacement):
+    payload = dict(name="Keyboard", description="Original", price="10.00", stock=2)
+    product_id = client.post("/products/", json=payload).json()["id"]
+    payload["description"] = replacement
+    assert client.put(f"/products/{product_id}", json=payload).status_code == 200
+    assert client.get(f"/products/{product_id}").json()["description"] == replacement
+
+
+def test_put_omitted_description_clears_it(client):
+    payload = dict(name="Keyboard", price="10.00", stock=2)
+    product_id = client.post("/products/", json={**payload, "description": "Original"}).json()["id"]
+    assert client.put(f"/products/{product_id}", json=payload).status_code == 200
+    assert client.get(f"/products/{product_id}").json()["description"] is None

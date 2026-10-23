@@ -1,78 +1,93 @@
-import os
-from pathlib import Path
+﻿from pathlib import Path
+from uuid import uuid4
 
 import pytest
-from dotenv import load_dotenv
+from alembic import command
+from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.engine import URL
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
-# IMPORTANTE:
-# cargamos las variables de testing ANTES de importar nuestra aplicación
-test_env_path = Path(".env.test")
-if not test_env_path.is_file():
-    raise RuntimeError(
-        "No se pueden ejecutar las pruebas: falta el archivo .env.test. "
-        "Se cancela para evitar operaciones destructivas en otra base de datos."
+from tests.db_safety import assert_test_database, test_database_url as build_test_url
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(scope="session")
+def test_engine():
+    # Lazy: pure validation and health tests need no database.
+    engine = create_engine(
+        build_test_url(ROOT / ".env.test"), pool_pre_ping=True,
+        hide_parameters=True, connect_args={"connect_timeout": 5},
     )
-
-load_dotenv(test_env_path, override=True)
-
-if os.getenv("DB_NAME") != "orderflow_test_db":
-    raise RuntimeError(
-        "No se pueden ejecutar las pruebas: DB_NAME debe ser exactamente "
-        "'orderflow_test_db'. Se cancela para proteger la base de desarrollo."
-    )
-
-from app.database import Base, get_db
-from app.main import app
-from app.models.products import Product  # registra el modelo en Base.metadata
-
-
-test_database_url = URL.create(
-    drivername="postgresql+psycopg",
-    username=os.getenv("DB_USER"),
-    password=os.getenv("DB_PASSWORD"),
-    host=os.getenv("DB_HOST"),
-    port=int(os.getenv("DB_PORT", "5432")),
-    database=os.getenv("DB_NAME"),
-)
-
-
-test_engine = create_engine(
-    test_database_url,
-    pool_pre_ping=True,
-)
-
-
-TestingSessionLocal = sessionmaker(
-    bind=test_engine,
-    autoflush=False,
-)
-
-
-@pytest.fixture()
-def db():
-    Base.metadata.drop_all(bind=test_engine)
-    Base.metadata.create_all(bind=test_engine)
-
-    db = TestingSessionLocal()
-
     try:
-        yield db
+        yield engine
     finally:
-        db.close()
+        engine.dispose()
 
 
 @pytest.fixture()
-def client(db):
+def db(test_engine):
+    # Route commits use savepoints; the generated schema is rolled back afterward.
+    # Existing public tables are never touched, and no drop_all() is needed.
+    with test_engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            assert_test_database(connection)
+            schema = "test_" + uuid4().hex
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+            connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
+            config = Config(str(ROOT / "alembic.ini"))
+            config.set_main_option("script_location", str(ROOT / "alembic"))
+            config.attributes["connection"] = connection
+            command.upgrade(config, "head")
+            with Session(bind=connection, join_transaction_mode="create_savepoint") as session:
+                yield session
+        finally:
+            transaction.rollback()
+
+
+@pytest.fixture()
+def anonymous_client(db):
+    from app.database import get_db
+    from app.main import app
+
     def override_get_db():
         yield db
 
+    previous = app.dependency_overrides.copy()
     app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous)
 
-    with TestClient(app) as test_client:
-        yield test_client
 
-    app.dependency_overrides.clear()
+@pytest.fixture(autouse=True)
+def test_jwt_secret(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "orderflow-tests-only-key-not-for-deployment-123456789")
+
+
+@pytest.fixture(scope="session")
+def password_hash():
+    from app.security import hasher
+    return hasher.hash("Testing-password-123")
+
+
+@pytest.fixture()
+def admin_user(db, password_hash):
+    from app.models.commerce import User
+    user = User(email="admin@example.com", password_hash=password_hash, role="admin")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture()
+def client(anonymous_client, admin_user):
+    from app.security import issue_token
+    anonymous_client.headers["Authorization"] = "Bearer " + issue_token(admin_user)
+    return anonymous_client
